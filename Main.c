@@ -10,7 +10,7 @@ int main(void) {
     fgets(c_based_variable, sizeof(c_based_variable), stdin);
     c_based_variable[strcspn(c_based_variable, "\n")] = '\0';
 
-    trasnform_to_assembly(c_based_variable);
+    transform_to_assembly(c_based_variable);
 
     
     return 0;
