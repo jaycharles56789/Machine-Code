@@ -3,7 +3,7 @@
 #include <ctype.h>
 #include "mips64.h"
 
-void transform_to_mips(const char *c_based);
+void transform_to_mips(char c_based[][256], int line_count);
 
 int main(void) {
     char c_based_variable[128][256];
@@ -47,9 +47,7 @@ int main(void) {
         line_counter++;
     }
 
-    for (int i = 0; i < line_counter; i++) {
-        transform_to_mips(c_based_variable[i]);
-    }
+    transform_to_mips(c_based_variable, line_counter);
 
     // for(int i = 0; i < line_counter; i++) {
     //     printf("%s\n", c_based_variable[i]);
@@ -59,6 +57,8 @@ int main(void) {
 
     return 0;
 }
-void transform_to_mips(const char *c_based) {
-    
+void transform_to_mips(char c_based[][256], int line_count) {
+    for(int i = 0; i < line_count; i++) {
+        printf("%s\n", c_based[i]);
+    }
 }
