@@ -51,3 +51,7 @@ static const I_type i_type[] = {
     {"BGEC"   , "010110"},
     {"BLEC"   , "010110"}
 };
+
+char tranform_to_assembly(const char *input_line) {
+    
+}

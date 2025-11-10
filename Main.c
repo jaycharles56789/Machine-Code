@@ -3,8 +3,10 @@
 #include <ctype.h>
 #include "mips64.h"
 
+void transform_to_mips(const char *c_based);
+
 int main(void) {
-    char c_based_variable[256];
+    char c_based_variable[128][256];
 
     printf("Enter a simple C-based variable assignment\n(e.g., int a = 5; || int b; || int c = a + b; || a + b + c):\n");
 
@@ -12,6 +14,10 @@ int main(void) {
 
         fgets(c_based_variable, sizeof(c_based_variable), stdin);
         c_based_variable[strcspn(c_based_variable, "\n")] = '\0';
+
+        if (strcmp(c_based_variable, "exit") == 0) {
+            break;
+        }
 
         // Check if the input starts with "int "
         if(strncmp(c_based_variable, "int ", 4) == 0) {
@@ -35,14 +41,17 @@ int main(void) {
                 printf("Invalid: variable must start with a letter\n");
                 continue;
             }
-        } else{
-            printf("Invalid: missing data type 'int'\n");
-            continue;
         }
-
-        break;
     }
 
-    
+    for(int i = 0; i < strlen(c_based_variable); i++) {
+        printf("%c", c_based_variable[i]);
+    }
+
+    // transform_to_mips(c_based_variable);
+
     return 0;
+}
+void transform_to_mips(const char *c_based) {
+    
 }

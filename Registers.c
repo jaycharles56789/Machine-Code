@@ -40,7 +40,7 @@ static const Register registers[] = {
     {"$ra",   "11111"}, {"r31", "11111"}
 };
 
-int tranform_to_assembly(const char *input_line) {
+char tranform_to_register(const char *input_line) {
     
 }
 
