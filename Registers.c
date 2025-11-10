@@ -43,3 +43,7 @@ static const Register registers[] = {
 int tranform_to_assembly() {
     
 }
+
+int get_register_code() {
+    
+}
