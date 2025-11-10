@@ -39,3 +39,7 @@ static const Register registers[] = {
     {"$fp",   "11110"}, {"r30", "11110"},
     {"$ra",   "11111"}, {"r31", "11111"}
 };
+
+int tranform_to_assembly() {
+    
+}
