@@ -1,13 +1,10 @@
 #ifndef _MIPS64_H_
 #define _MIPS64_H_
 
-<<<<<<< Updated upstream
 #include <stddef.h> //for size_t
-=======
 // Function prototypes for Registers.c
 char tranform_to_assembly(const char *input_line);
 int get_register_code(const char *name, char *out_code);
->>>>>>> Stashed changes
 
 #define REG_CODE_STR_LEN 6
 #define OPCODE_STR_LEN 7
