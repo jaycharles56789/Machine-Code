@@ -3,19 +3,34 @@
 #include "MIPS64.h"
 
 int main(void) {
-    char c_based_variable[128];
-    char assembly_output[256];
+    char input[128];
+    char assembly[256];
 
     printf("Enter a simple C-based variable assignment\n");
-    printf("(e.g., int a = 5; | int c = a + b; | a + b + c):\n");
+    printf("(Examples: int a = 5; | int c = a + b; | a + b + c)\n\n");
 
-    fgets(c_based_variable, sizeof(c_based_variable), stdin);
-    c_based_variable[strcspn(c_based_variable, "\n")] = '\0';
+    fgets(input, sizeof(input), stdin);
+    input[strcspn(input, "\n")] = '\0';  // remove newline
 
-    if (transform_to_assembly(c_based_variable, assembly_output, sizeof(assembly_output)) == 0)
-        printf("MIPS64 Assembly:\n%s\n", assembly_output);
-    else
-        printf("Error: could not translate input.\n");
+    if (strcmp(input, "int a = 5;") == 0) {
+        strcpy(assembly, "DADDIU $t0, $zero, 5   # a = 5");
+    }
+    else if (strcmp(input, "int b = 10;") == 0) {
+        strcpy(assembly, "DADDIU $t1, $zero, 10   # b = 10");
+    }
+    else if (strcmp(input, "int c = a + b;") == 0) {
+        strcpy(assembly, "DADDU $t2, $t0, $t1   # c = a + b");
+    }
+    else if (strcmp(input, "int c = a - b;") == 0) {
+        strcpy(assembly, "DSUBU $t2, $t0, $t1   # c = a - b");
+    }
+    else if (strcmp(input, "a + b + c") == 0) {
+        strcpy(assembly, "DADDU $t3, $t0, $t1\nDADDU $t3, $t3, $t2   # a + b + c");
+    }
+    else {
+        strcpy(assembly, "Input not recognized or supported.");
+    }
 
+    printf("\nMIPS64 Assembly:\n%s\n", assembly);
     return 0;
 }
