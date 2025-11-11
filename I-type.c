@@ -52,6 +52,12 @@ static const I_type i_type[] = {
     {"BLEC"   , "010110"}
 };
 
-char tranform_to_assembly(const char *input_line) {
-    
+int get_i_opcode(const char *mnemonic, char out_code[OPCODE_STR_LEN]) {
+    for (size_t i = 0; i < sizeof(i_type) / sizeof(i_type[0]); ++i) {
+        if (strcmp(i_type[i].name, mnemonic) == 0) {
+            strcpy(out_code, i_type[i].code);
+            return 0;
+        }
+    }
+    return 1; 
 }

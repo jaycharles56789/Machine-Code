@@ -20,3 +20,13 @@ static const R_type r_type[] = {
     {"BITSWAP"  , "011111"},
     {"DBITSWAP" , "011111"}
 };
+
+int get_r_opcode(const char *mnemonic, char out_code[OPCODE_STR_LEN]) {
+    for (size_t i = 0; i < sizeof(r_type) / sizeof(r_type[0]); ++i) {
+        if (strcmp(r_type[i].name, mnemonic) == 0) {
+            strcpy(out_code, r_type[i].code);
+            return 0;
+        }
+    }
+    return 1; 
+}

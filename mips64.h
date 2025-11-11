@@ -1,34 +1,25 @@
-#ifndef _MIPS64_H_
-#define _MIPS64_H_
+#ifndef MIPS64_H
+#define MIPS64_H
 
-#include <stddef.h> //for size_t
-// Function prototypes for Registers.c
-char tranform_to_assembly(const char *input_line);
-int get_register_code(const char *name, char *out_code);
+#include <stddef.h>
 
 #define REG_CODE_STR_LEN 6
 #define OPCODE_STR_LEN 7
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
+// ===== Registers.c =====
 int get_register_code(const char *name, char out_code[REG_CODE_STR_LEN]);
 
-int get_register_name(const char code[REG_CODE_STR_LEN - 1],
-                      char *out_name, size_t out_name_sz);
-
+// ===== I-type.c =====
 int get_i_opcode(const char *mnemonic, char out_code[OPCODE_STR_LEN]);
+
+// ===== J-type.c =====
 int get_j_opcode(const char *mnemonic, char out_code[OPCODE_STR_LEN]);
 
+// ===== R-type.c =====
 int get_r_opcode(const char *mnemonic, char out_code[OPCODE_STR_LEN]);
 
-int transform_to_assembly(const char *input_line,
-                          char *out_buf, size_t out_buf_sz);
+// ===== main translator =====
+int transform_to_assembly(const char *input_line, char *out_buf, size_t out_buf_sz);
 
-#ifdef __cplusplus
-}
 #endif
-
-#endif // _MIPS64_H_
 
