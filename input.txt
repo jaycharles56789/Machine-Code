@@ -1,0 +1,6 @@
+int a;
+a = 5;
+int b = 10;
+int c = 15;
+
+a = a - b / c

@@ -56,6 +56,27 @@ void binary_to_hex(const char *bin,char *hex){
     sprintf(hex,"0x%08X",val);
 }
 
+char* source_file() {
+    FILE *source_code = fopen("input.txt","r");
+    if(source_code == NULL) {
+        fprintf(stderr, "ERROR: File cannot be opened.\n");
+        return NULL;
+    }
+    char *line_of_code = (char *)malloc(1024 * sizeof(char));
+    if(line_of_code == NULL) {
+        fprintf(stderr, "ERROR: Memory allocation failed.\n");
+        fclose(source_code);
+        return NULL;
+    }
+    char lines[1024];
+    line_of_code[0] = '\0';
+    while(fgets(lines, sizeof(lines), source_code) != NULL) {
+        strcat(line_of_code, lines);
+    }
+    fclose(source_code);
+    return line_of_code;
+}
+
 int main(){
     char input[128], clean_input[128];
     char var1[32], var2[32], var3[32];
@@ -67,6 +88,13 @@ int main(){
     char machine_code[33], hexcode[11];
     char op;
 
+    char *source = source_file();
+    if(source == NULL) {
+        return 1;
+    }
+    printf("input source code:\n%s\n", source);
+    return 0;
+    
     printf("Enter a C-based assignment or arithmetic operation:\n");
     fgets(input,sizeof(input),stdin);
     input[strcspn(input,"\n")]='\0';
