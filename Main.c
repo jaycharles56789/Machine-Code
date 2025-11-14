@@ -63,17 +63,21 @@ char* source_file() {
         fprintf(stderr, "ERROR: File cannot be opened.\n");
         return NULL;
     }
+
     char *line_of_code = (char *)malloc(1024 * sizeof(char));
     if(line_of_code == NULL) {
         fprintf(stderr, "ERROR: Memory allocation failed.\n");
         fclose(source_code);
         return NULL;
     }
-    char lines[1024];
+    
     line_of_code[0] = '\0';
+    
+    char lines[1024];
     while(fgets(lines, sizeof(lines), source_code) != NULL) {
         strcat(line_of_code, lines);
     }
+
     fclose(source_code);
     return line_of_code;
 }
