@@ -56,6 +56,7 @@ void binary_to_hex(const char *bin,char *hex){
     sprintf(hex,"0x%08X",val);
 }
 
+// Read source code from file
 char* source_file() {
     FILE *source_code = fopen("input.txt","r");
     if(source_code == NULL) {
@@ -81,7 +82,7 @@ int main(){
     char input[128], clean_input[128];
     char var1[32], var2[32], var3[32];
     char reg1[5], reg2[5], reg3[5];
-    int value=0;
+    int  value=0;
     char assembly[256];
     char opcode[7], funct[7];
     char rs_code[6], rt_code[6], rd_code[6], imm_bin[17];
@@ -93,8 +94,7 @@ int main(){
         return 1;
     }
     printf("input source code:\n%s\n", source);
-    return 0;
-    
+
     printf("Enter a C-based assignment or arithmetic operation:\n");
     fgets(input,sizeof(input),stdin);
     input[strcspn(input,"\n")]='\0';
