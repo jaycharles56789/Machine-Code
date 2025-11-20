@@ -1,0 +1,24 @@
+# See what has changed compared to the remote branch
+git status
+# (This will typically say "Your branch is behind 'origin/main' by X commits, and can be fast-forwarded.")
+
+# Fetch all branches from the default remote (origin)
+git fetch origin
+
+# Fetch a specific branch (e.g., 'main') from the default remote
+git fetch origin main
+
+# Pull changes from the default remote and merge into your current branch
+git pull
+
+# Pull a specific branch (e.g., 'main') from the default remote
+git pull origin main
+
+# 1. Stage all changes
+git add .
+
+# 2. Commit the staged changes with a message
+git commit -m "Brief description of changes"
+
+# 3. Push the local commits to the remote branch (assuming you are on 'main')
+git push origin main
