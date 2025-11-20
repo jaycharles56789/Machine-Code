@@ -17,7 +17,7 @@ int main(void) {
     return 0;
 }
 
-// Read source code from file
+// Read C-based variable from file
 char *open_source_file() {
     FILE *source_code = fopen("input.txt","r");
     if(source_code == NULL) {
@@ -25,7 +25,6 @@ char *open_source_file() {
         return NULL;
     }
 
-    // 
     char *line_of_code = (char *)malloc(1024 * sizeof(char));
     if(line_of_code == NULL) {
         fprintf(stderr, "ERROR: Memory allocation failed.\n");
