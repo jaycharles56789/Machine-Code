@@ -10,7 +10,14 @@
 char *open_source_file();
 void compile_to_assemble(const char *source_code, const char *);
 
-int main(void) {
+int main(int argc, char *argv[]) {
+
+    // if(argc < 2) {
+    //     fprintf(stderr, "Usage: %s\n", argv[0]);
+    //     return 1;
+    // }
+    // char *source_coude = argv[1];
+
     char *source_coude = open_source_file();
     char file_name[] = "assembly.asm";
     if(source_coude == NULL) {
