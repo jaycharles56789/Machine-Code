@@ -6,13 +6,16 @@
 
 // Functions prototype
 char *open_source_file();
+void compile_to_assemble(const char *source_code, const char *);
 
 int main(void) {
     char *source_coude = open_source_file();
+    char file_name[] = "assembly.asm";
     if(source_coude == NULL) {
         return 1;
     }
     printf("input source code:\n%s\n", source_coude);
+    compile_to_assemble(source_coude , file_name);
     fclose(source_coude);
     return 0;
 }
@@ -41,4 +44,12 @@ char *open_source_file() {
 
     fclose(source_code);
     return line_of_code;
+}
+// Compile C-based source code to MIPS64 assembly
+void compile_to_assemble(const char *source_code, const char *file_name) {
+    FILE *output_file = fopen(file_name, "w");
+    if(output_file == NULL) {
+        fprintf(stderr, "ERROR: \"%s\"\n", file_name);
+        return;
+    }
 }
