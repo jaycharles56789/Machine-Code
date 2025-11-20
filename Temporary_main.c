@@ -4,6 +4,8 @@
 #include <ctype.h>
 #include "MIPS64.h"
 
+#define ESCAPE_SEQUENCE(c) ((c) == ' ' || (c) == '\n' || (c) == '\t' || (c) == '\r')
+
 // Functions prototype
 char *open_source_file();
 void compile_to_assemble(const char *source_code, const char *);
@@ -47,9 +49,13 @@ char *open_source_file() {
 }
 // Compile C-based source code to MIPS64 assembly
 void compile_to_assemble(const char *source_code, const char *file_name) {
+
+
+
     FILE *output_file = fopen(file_name, "w");
     if(output_file == NULL) {
         fprintf(stderr, "ERROR: \"%s\"\n", file_name);
         return;
     }
 }
+
