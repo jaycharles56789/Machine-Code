@@ -1,3 +1,6 @@
+/*
+    TODO: Bai ikaw tiwas ug tarong ang uban wla nako ma huna2 an lain labad nas ulo 
+*/
 
 #include <stdio.h>
 #include <string.h>
@@ -6,7 +9,6 @@
 #include "MIPS64.h"
 
 #define ESCAPE_SEQUENCE(c) ((c) == ' ' || (c) == '\n' || (c) == '\t' || (c) == '\r')
-#define COMMENT_CHARACTER(c) ((c) == '/' || (c) == '*')
 #define APHABETIC_CHARACTER(c) (((c) >= 'a' && (c) <= 'z') || ((c) >= 'A' && (c) <= 'Z') || (c) == '_')
 #define DIGIT_CHARACTER(c) ((c) >= '0' && (c) <= '9')
 #define ALPHANUMERIC_CHARACTER(c) (APHABETIC_CHARACTER(c) || DIGIT_CHARACTER(c))
@@ -95,7 +97,6 @@ void compile_to_assemble(const char *source_code, const char *file_name) {
 
     lexical_analyzer(source_buff);
 
-
     free(source_buff);
     source_buff = NULL;
 
@@ -140,6 +141,10 @@ void lexical_analyzer(const char *source_code) {
             i++;
         }
     }
+}
+
+void parsing_statement(const char *statement) {
+    // TODO: ikaw ra ani bai 
 }
 
 /* ---------- trims white space ----------*/

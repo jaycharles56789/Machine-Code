@@ -23,7 +23,6 @@ or
 git add <file_name>
 
 # 2. Commit the staged changes with a message
-git commit -m "Brief description of changes"
 
 # 3. Push the local commits to the remote branch (assuming you are on 'main')
 git push origin main
