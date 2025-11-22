@@ -1,3 +1,4 @@
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -5,6 +6,7 @@
 #include "MIPS64.h"
 
 #define ESCAPE_SEQUENCE(c) ((c) == ' ' || (c) == '\n' || (c) == '\t' || (c) == '\r')
+#define COMMENT_CHARACTER(c) ((c) == '/' || (c) == '*')
 #define APHABETIC_CHARACTER(c) (((c) >= 'a' && (c) <= 'z') || ((c) >= 'A' && (c) <= 'Z') || (c) == '_')
 #define DIGIT_CHARACTER(c) ((c) >= '0' && (c) <= '9')
 #define ALPHANUMERIC_CHARACTER(c) (APHABETIC_CHARACTER(c) || DIGIT_CHARACTER(c))
@@ -20,6 +22,9 @@ typedef struct {
 // Functions prototype
 char *open_source_file();
 void compile_to_assemble(const char *source_code, const char *);
+char *skip_escape_sequences_and_comments(const char *source_code, int *i, int *line);
+void lexical_analyzer(const char *source_code);
+static void white_space_trim(char *s);
 
 int main(int argc, char *argv[]) {
 
@@ -30,13 +35,18 @@ int main(int argc, char *argv[]) {
     // char *source_coude = argv[1];
 
     char *source_coude = open_source_file();
-    char file_name[] = "assembly.asm";
     if(source_coude == NULL) {
         return 1;
     }
+
     printf("input source code:\n%s\n", source_coude);
+    
+    char file_name[] = "assembly.asm";
     compile_to_assemble(source_coude , file_name);
-    fclose(source_coude);
+
+    free(source_coude);
+    source_coude = NULL;
+
     return 0;
 }
 
@@ -83,6 +93,95 @@ void compile_to_assemble(const char *source_code, const char *file_name) {
         return;
     }
 
+    lexical_analyzer(source_buff);
 
+
+    free(source_buff);
+    source_buff = NULL;
+
+    fclose(output_file);
 }
 
+char *skip_escape_sequences_and_comments(const char *source_code, int *i, int *line) {
+    while(source_code[*i] != '\0') {
+        if(ESCAPE_SEQUENCE(source_code[*i])) {
+            if(source_code[*i] == '\n') {
+                (*line)++;
+            }
+            (*i)++;
+        } else if(source_code[*i] == '/' && source_code[*i + 1] == '/') {
+            // Single-line comment
+            while(source_code[*i] != '\0' && source_code[*i] != '\n') (*i)++;
+        } else if(source_code[*i] == '/' && source_code[*i + 1] == '*') {
+            // Multi-line comment
+            (*i) += 2; // Skip the /*
+            while(source_code[*i] != '\0' && !(source_code[*i] == '*' && source_code[*i + 1] == '/')) {
+                if(source_code[*i] == '\n') {
+                    (*line)++;
+                }
+                (*i)++;
+            }
+            if(source_code[*i] != '\0') {
+                (*i) += 2; // Skip the */
+            }
+        } else {
+            break;
+        }
+    }
+}
+
+void lexical_analyzer(const char *source_code) {
+    int i = 0;
+    int line = 1;
+
+    while(source_code[i] != '\0') {
+        skip_escape_sequences_and_comments(source_code, &i, &line);
+        if(source_code[i] == '\0') break;
+
+        if(APHABETIC_CHARACTER(source_code[i])) {
+            // Identifier or keyword
+            int start = i;
+            while(ALPHANUMERIC_CHARACTER(source_code[i])) {
+                i++;
+            }
+            int length = i - start;
+            char *token = (char *)malloc(length + 1);
+            strncpy(token, &source_code[start], length);
+            token[length] = '\0';
+            printf("Line %d: Identifier/Keyword: %s\n", line, token);
+            free(token);
+        } else if(DIGIT_CHARACTER(source_code[i])) {
+            // Numeric literal
+            int start = i;
+            while(DIGIT_CHARACTER(source_code[i])) {
+                i++;
+            }
+            int length = i - start;
+            char *token = (char *)malloc(length + 1);
+            strncpy(token, &source_code[start], length);
+            token[length] = '\0';
+            printf("Line %d: Numeric Literal: %s\n", line, token);
+            free(token);
+        } else {
+            // Other characters (operators, punctuation, etc.)
+            printf("Line %d: Symbol: %c\n", line, source_code[i]);
+            i++;
+        }
+    }
+}
+
+/* ---------- trims white space ----------*/
+static void white_space_trim(char *s) {
+    char *p = s;
+    
+    while (*p && isspace((unsigned char)*p)) p++;
+    if (p != s) {
+        memmove(s, p, strlen(p) + 1);
+    }
+
+    char *end = s + strlen(s) - 1;
+
+    while (end >= s && isspace((unsigned char)*end)) {
+        *end = '\0'; end--; 
+    }
+}
