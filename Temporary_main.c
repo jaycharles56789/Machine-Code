@@ -102,34 +102,6 @@ void compile_to_assemble(const char *source_code, const char *file_name) {
     fclose(output_file);
 }
 
-char *skip_escape_sequences_and_comments(const char *source_code, int *i, int *line) {
-    while(source_code[*i] != '\0') {
-        if(ESCAPE_SEQUENCE(source_code[*i])) {
-            if(source_code[*i] == '\n') {
-                (*line)++;
-            }
-            (*i)++;
-        } else if(source_code[*i] == '/' && source_code[*i + 1] == '/') {
-            // Single-line comment
-            while(source_code[*i] != '\0' && source_code[*i] != '\n') (*i)++;
-        } else if(source_code[*i] == '/' && source_code[*i + 1] == '*') {
-            // Multi-line comment
-            (*i) += 2; // Skip the /*
-            while(source_code[*i] != '\0' && !(source_code[*i] == '*' && source_code[*i + 1] == '/')) {
-                if(source_code[*i] == '\n') {
-                    (*line)++;
-                }
-                (*i)++;
-            }
-            if(source_code[*i] != '\0') {
-                (*i) += 2; // Skip the */
-            }
-        } else {
-            break;
-        }
-    }
-}
-
 void lexical_analyzer(const char *source_code) {
     int i = 0;
     int line = 1;
@@ -183,5 +155,33 @@ static void white_space_trim(char *s) {
 
     while (end >= s && isspace((unsigned char)*end)) {
         *end = '\0'; end--; 
+    }
+}
+
+char *skip_escape_sequences_and_comments(const char *source_code, int *i, int *line) {
+    while(source_code[*i] != '\0') {
+        if(ESCAPE_SEQUENCE(source_code[*i])) {
+            if(source_code[*i] == '\n') {
+                (*line)++;
+            }
+            (*i)++;
+        } else if(source_code[*i] == '/' && source_code[*i + 1] == '/') {
+            // Single-line comment
+            while(source_code[*i] != '\0' && source_code[*i] != '\n') (*i)++;
+        } else if(source_code[*i] == '/' && source_code[*i + 1] == '*') {
+            // Multi-line comment
+            (*i) += 2; // Skip the /*
+            while(source_code[*i] != '\0' && !(source_code[*i] == '*' && source_code[*i + 1] == '/')) {
+                if(source_code[*i] == '\n') {
+                    (*line)++;
+                }
+                (*i)++;
+            }
+            if(source_code[*i] != '\0') {
+                (*i) += 2; // Skip the */
+            }
+        } else {
+            break;
+        }
     }
 }
