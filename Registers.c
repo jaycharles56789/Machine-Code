@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include "MIPS64.h"
 
 typedef struct {
     const char *name;
