@@ -1,50 +1,22 @@
 #include <stdio.h>
 #include <string.h>
-#include "MIPS64.h"
+#include "mips64.h"
 
-typedef struct {
-    const char *name;
-    const char *code;
-} I_type;
+typedef struct { const char *mn; const char *op; } Ientry;
 
-static const I_type i_type[] = {
+static const Ientry itab[] = {
     {"DADDIU", "011001"},
-    {"ANDI",   "001100"},
-    {"ORI",    "001101"},
-    {"XORI",   "001110"},
-    {"SLTI",   "001010"},
-    {"SLTIU",  "001011"},
-    {"AUI",    "001111"},
-    {"DAUI",   "011101"},
-    {"LB",     "100000"},
-    {"LBU",    "100100"},
-    {"LD",     "110111"},
-    {"LDC1",   "110101"},
-    {"LH",     "100001"},
-    {"LHU",    "100101"},
-    {"LW",     "100011"},
-    {"LWC1",   "110001"},
-    {"LWU",    "100111"},
-    {"LUI",    "001111"},
     {"SB",     "101000"},
-    {"SD",     "111111"},
-    {"SDC1",   "111101"},
-    {"SH",     "101001"},
-    {"SW",     "101011"},
-    {"SWC1",   "111001"},
-    {"B",      "000100"},
-    {"BAL",    "000001"},
-    {"BEQ",    "000100"},
-    {"BNE",    "000101"}
+    {"LB",     "100000"}
 };
 
-int get_i_opcode(const char *mnemonic, char out_code[OPCODE_STR_LEN]) {
-    int i;
-    for (i = 0; i < sizeof(i_type)/sizeof(i_type[0]); i++) {
-        if (strcmp(i_type[i].name, mnemonic) == 0) {
-            strcpy(out_code, i_type[i].code);
-            return 1; // found
+int get_i_opcode(const char *mnemonic, char out_code[OPCODE_LEN]) {
+    for (size_t i = 0; i < sizeof(itab)/sizeof(itab[0]); ++i) {
+        if (strcmp(itab[i].mn, mnemonic) == 0) {
+            strncpy(out_code, itab[i].op, OPCODE_LEN);
+            out_code[OPCODE_LEN-1] = '\0';
+            return 1;
         }
     }
-    return 0; // not found
+    return 0;
 }

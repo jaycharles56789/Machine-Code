@@ -1,29 +1,27 @@
 #include <stdio.h>
 #include <string.h>
-#include "MIPS64.h"
+#include "mips64.h"
 
-typedef struct {
-    const char *name;
-    const char *code;
-} R_type;
+typedef struct { const char *mn; const char *opcode; const char *funct; } Rentry;
 
-static const R_type r_type[] = {
-    {"DADDU", "000000"},
-    {"DSUBU", "000000"},
-    {"DMUL",  "000000"},
-    {"DIV",   "000000"},
-    {"NOP",   "000000"},
-    {"BITSWAP", "011111"},
-    {"DBITSWAP", "011111"}
+static const Rentry rtab[] = {
+    {"DADDU", "000000", "000000"},
+    {"DSUBU", "000000", "000011"},
+    {"DMULT", "000000", "000010"}, 
+    {"DDIV",  "000000", "000110"},
+    {"DADD",  "000000", "000100"}, 
+    {"DSUB",  "000000", "000111"}  
 };
 
-int get_r_opcode(const char *mnemonic, char out_code[OPCODE_STR_LEN]) {
-    int i;
-    for (i = 0; i < sizeof(r_type)/sizeof(r_type[0]); i++) {
-        if (strcmp(r_type[i].name, mnemonic) == 0) {
-            strcpy(out_code, r_type[i].code);
-            return 1; // found
+int get_r_opcode(const char *mnemonic, char opcode_out[OPCODE_LEN], char funct_out[FUNCT_LEN]) {
+    for (size_t i = 0; i < sizeof(rtab)/sizeof(rtab[0]); ++i) {
+        if (strcmp(rtab[i].mn, mnemonic) == 0) {
+            strncpy(opcode_out, rtab[i].opcode, OPCODE_LEN);
+            opcode_out[OPCODE_LEN-1] = '\0';
+            strncpy(funct_out, rtab[i].funct, FUNCT_LEN);
+            funct_out[FUNCT_LEN-1] = '\0';
+            return 1;
         }
     }
-    return 0; // not found
+    return 0;
 }

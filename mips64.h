@@ -1,20 +1,23 @@
-#ifndef _MIPS64_H_
-#define _MIPS64_H_
+#ifndef MIPS64_H
+#define MIPS64_H
 
-#define OPCODE_STR_LEN 8   // Enough space for 6-bit opcode + null terminator
 
-// Look through register names and return corresponding binary code
-int get_register_code(const char *reg_name, char out_code[OPCODE_STR_LEN]);
+#define REG_CODE_LEN 6    
+#define OPCODE_LEN   8    
+#define FUNCT_LEN    8    
 
-// Look through R-type instruction mnemonics and return corresponding binary opcode
-int get_r_opcode(const char *mnemonic, char out_code[OPCODE_STR_LEN]);
+#include <stddef.h>
 
-// Look through I-type instruction mnemonics and return corresponding binary opcode
-int get_i_opcode(const char *mnemonic, char out_code[OPCODE_STR_LEN]);
 
-// Look through J-type instruction mnemonics and return corresponding binary opcode
-int get_j_opcode(const char *mnemonic, char out_code[OPCODE_STR_LEN]);
+int get_register_code(const char *name, char out_code[REG_CODE_LEN]);
 
-#endif
+
+int get_i_opcode(const char *mnemonic, char out_code[OPCODE_LEN]);
+
+
+int get_r_opcode(const char *mnemonic, char opcode_out[OPCODE_LEN], char funct_out[FUNCT_LEN]);
+
+#endif 
+
 
 
