@@ -16,19 +16,28 @@
 // Linked list algorithm approach
 typedef struct {
     char line[1024];
-
     struct Node *next;
 } Node;
 
+/* ---------- Symbol table ---------- */
+typedef struct {
+    char name[64];
+    int value;
+    int initialized;
+} Symbol;
 
-// Functions prototype
+/* ---------- Functions prototype ---------- */
 char *open_source_file();
 void compile_to_assemble(const char *source_code, const char *);
-char *skip_escape_sequences_and_comments(const char *source_code, int *i, int *line);
 void lexical_analyzer(const char *source_code);
+void parsing_statement();
+char *skip_escape_sequences_and_comments(const char *source_code, int *i, int *line);
 static void white_space_trim(char *s);
 
 int main(int argc, char *argv[]) {
+
+    (void)argc;
+    (void)argv;
 
     // if(argc < 2) {
     //     fprintf(stderr, "Usage: %s\n", argv[0]);
@@ -117,11 +126,16 @@ void lexical_analyzer(const char *source_code) {
             while(ALPHANUMERIC_CHARACTER(source_code[i])) {
                 i++;
             }
+
             int length = i - start;
             char *token = (char *)malloc(length + 1);
+
             strncpy(token, &source_code[start], length);
+
             token[length] = '\0';
+
             printf("Line %d: Identifier/Keyword: %s\n", line, token);
+
             free(token);
         } else if(DIGIT_CHARACTER(source_code[i])) {
             // Numeric literal
@@ -129,11 +143,16 @@ void lexical_analyzer(const char *source_code) {
             while(DIGIT_CHARACTER(source_code[i])) {
                 i++;
             }
+
             int length = i - start;
             char *token = (char *)malloc(length + 1);
+
             strncpy(token, &source_code[start], length);
+
             token[length] = '\0';
+
             printf("Line %d: Numeric Literal: %s\n", line, token);
+
             free(token);
         } else {
             // Other characters (operators, punctuation, etc.)
@@ -144,7 +163,7 @@ void lexical_analyzer(const char *source_code) {
 }
 
 void parsing_statement(const char *statement) {
-    // TODO: ikaw ra ani bai 
+    // TODO: do this 
 }
 
 /* ---------- trims white space ----------*/
@@ -182,9 +201,11 @@ char *skip_escape_sequences_and_comments(const char *source_code, int *i, int *l
                 }
                 (*i)++;
             }
+
             if(source_code[*i] != '\0') {
                 (*i) += 2; // Skip the */
             }
+
         } else {
             break;
         }
