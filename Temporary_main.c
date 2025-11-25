@@ -13,44 +13,37 @@
 #define DIGIT_CHARACTER(c) ((c) >= '0' && (c) <= '9')
 #define ALPHANUMERIC_CHARACTER(c) (APHABETIC_CHARACTER(c) || DIGIT_CHARACTER(c))
 
-// Linked list algorithm approach
-typedef struct {
-    char line[1024];
-    struct Node *next;
-} Node;
-
 /* ---------- Symbol table ---------- */
+#define MAX_SYMBOLS 128
 typedef struct {
     char name[64];
     int value;
     int initialized;
 } Symbol;
 
+Symbol symbol_table[MAX_SYMBOLS];
+size_t symbol_count = 0;
+
 /* ---------- Functions prototype ---------- */
 char *open_source_file();
 void compile_to_assemble(const char *source_code, const char *);
 void lexical_analyzer(const char *source_code);
-void parsing_statement(const char *statement);
-char *skip_escape_sequences_and_comments(const char *source_code, int *i, int *line);
+void parsing_statement(const char *token);
+void semantic_analyzer(const char *token);
 static void white_space_trim(char *s);
+char *skip_escape_sequences_and_comments(const char *source_code, int *i, int *line);
+void add_variable(const char *name, int value, int initialized);
 
-int main(int argc, char *argv[]) {
+int main(void) {
 
-    (void)argc;
-    (void)argv;
-
-    // if(argc < 2) {
-    //     fprintf(stderr, "Usage: %s\n", argv[0]);
-    //     return 1;
-    // }
-    // char *source_coude = argv[1];
+    
 
     char *source_code = open_source_file();
     if(source_code == NULL) {
         return 1;
     }
 
-    printf("input source code:\n%s\n", source_code);
+    printf("\ninput source code:\n%s\n", source_code);
     
     char file_name[] = "assembly.asm";
     compile_to_assemble(source_code , file_name);
@@ -97,17 +90,39 @@ void compile_to_assemble(const char *source_code, const char *file_name) {
     }
 
     // Duplicate source_code to mutable buffer
-    char *duplecated_source_ = strdup(source_code ? source_code : "");
-    if(duplecated_source_ == NULL) {
+    char *duplecated_source = strdup(source_code ? source_code : "");
+    if(duplecated_source == NULL) {
         fprintf(stderr, "ERROR: Memory allocation failed.\n");
         fclose(output_file);
         return;
     }
 
-    lexical_analyzer(duplecated_source_);
+    const char *p = duplecated_source;
+    while (*p) {
+        const char *semi = strchr(p, ';'); // find next semicolon
+        if (!semi) {
+            printf("Syntax Error: Missing semicolon in statement '%s'\n", p);
+            break;
+        }
+    
+        size_t len = semi - p + 1; // include semicolon
+        char stmt[512];
+        strncpy(stmt, p, len);
+        stmt[len] = '\0';
+        white_space_trim(stmt);
+    
+        if (stmt[0] != '\0') {
+            semantic_analyzer(stmt);   // statement still has semicolon
+            parsing_statement(stmt);   // parse variable declarations
+        }
+    
+        p = semi + 1; // move past this semicolon
+    }
 
-    free(duplecated_source_);
-    duplecated_source_ = NULL;
+    lexical_analyzer(duplecated_source);
+
+    free(duplecated_source);
+    duplecated_source = NULL;
 
     fclose(output_file);
 }
@@ -127,17 +142,21 @@ void lexical_analyzer(const char *source_code) {
             }
 
             int length = i - start;
-            char *token = (char *)malloc(length + 1);
+            char *tokenizer = (char *)malloc(length + 1);
+            if(tokenizer == NULL) {
+                fprintf(stderr, "ERROR: Memory allocation failed.\n");
+                return;
+            }
 
-            strncpy(token, &source_code[start], length);
+            strncpy(tokenizer, &source_code[start], length);
 
-            token[length] = '\0';
+            tokenizer[length] = '\0';
 
-            printf("Line %d: Identifier/Keyword: %s\n", line, token);
+            // printf("Line %d: Identifier/Keyword: %s\n", line, tokenizer);
 
-            parsing_statement(token);
+            parsing_statement(tokenizer);
 
-            free(token);
+            free(tokenizer);
         } else if(DIGIT_CHARACTER(source_code[i])) {
             // Numeric literal
             int start = i;
@@ -146,28 +165,32 @@ void lexical_analyzer(const char *source_code) {
             }
 
             int length = i - start;
-            char *token = (char *)malloc(length + 1);
+            char *tokenizer = (char *)malloc(length + 1);
+            if(tokenizer == NULL) {
+                fprintf(stderr, "ERROR: Memory allocation failed.\n");
+                return;
+            }
 
-            strncpy(token, &source_code[start], length);
+            strncpy(tokenizer, &source_code[start], length);
 
-            token[length] = '\0';
+            tokenizer[length] = '\0';
 
-            printf("Line %d: Numeric Literal: %s\n", line, token);
+            // printf("Line %d: Numeric Literal: %s\n", line, tokenizer);
 
-            free(token);
+            free(tokenizer);
         } else {
             // Other characters (operators, punctuation, etc.)
-            printf("Line %d: Symbol: %c\n", line, source_code[i]);
+            // printf("Line %d: Symbol: %c\n", line, source_code[i]);
             i++;
         }
     }
 }
 
-void parsing_statement(const char *statement) {
-    if (!statement) return;
+void parsing_statement(const char *token) {
+    if (!token) return;
 
     char temp[256];
-    strncpy(temp, statement, sizeof(temp)-1);
+    strncpy(temp, token, sizeof(temp)-1);
     temp[sizeof(temp)-1] = '\0';
     white_space_trim(temp);
 
@@ -190,44 +213,133 @@ void parsing_statement(const char *statement) {
 
         white_space_trim(var_name);
 
-        printf("Declare variable: %s, value=%d, initialized=%d\n",
-               var_name, value, initialized);
+        add_variable(var_name, value, initialized);
+
+        // printf("Declare variable: %s, value=%d, initialized=%d\n",
+        //        var_name, value, initialized);
         return;
     }
 
-    // --- R-type instruction ---
-    char instr[16];
-    sscanf(temp, "%15s", instr);
-
-    const R_type *r = get_r_type(instr);
-    if (r) {
-        char rd[8], rs[8], rt[8];
-        if (sscanf(temp + strlen(instr), " %7[^,], %7[^,], %7s", rd, rs, rt) != 3) {
-            printf("Invalid R-type format: %s\n", temp);
-            return;
-        }
-
-        white_space_trim(rd);
-        white_space_trim(rs);
-        white_space_trim(rt);
-
-        const char *rd_code = get_reg_code(rd);
-        const char *rs_code = get_reg_code(rs);
-        const char *rt_code = get_reg_code(rt);
-
-        if (!rd_code || !rs_code || !rt_code) {
-            printf("Unknown register in instruction: %s\n", temp);
-            return;
-        }
-
-        printf("R-type binary: %s%s%s%s%s\n",
-               r->Op_code, rs_code, rt_code, rd_code, r->Shamt, r->Funct);
-        return;
-    }
-
-    printf("Unrecognized statement: %s\n", temp);
+    // printf("Unrecognized statement: %s\n", temp);
 }
 
+void semantic_analyzer(const char *token) {
+    if (!token) return;
+
+    char temp[256];
+    strncpy(temp, token, sizeof(temp) - 1);
+    temp[sizeof(temp) - 1] = '\0';
+    white_space_trim(temp);
+
+    if (temp[0] == '\0') return;
+
+    // --- 1) Check for missing semicolon ---
+    size_t len = strlen(temp);
+    if (temp[len - 1] != ';') {
+        printf("Syntax Error: Missing semicolon in statement '%s'\n", temp);
+        return;
+    }
+
+    // Remove semicolon for easier parsing
+    temp[len - 1] = '\0';
+    white_space_trim(temp);
+
+    // --- 2) Skip variable declarations ---
+    if (strncmp(temp, "int ", 4) == 0) return;
+
+    // --- 3) Assignment statements ---
+    char lhs[64];
+    char rhs[256];
+    if (sscanf(temp, "%63[^=] = %255[^\n]", lhs, rhs) == 2) {
+        white_space_trim(lhs);
+        white_space_trim(rhs);
+
+        // Check LHS variable exists
+        int lhs_found = 0;
+        for (size_t i = 0; i < symbol_count; ++i) {
+            if (strcmp(symbol_table[i].name, lhs) == 0) {
+                lhs_found = 1;
+                break;
+            }
+        }
+        if (!lhs_found) {
+            printf("Semantic Error: Variable '%s' used before declaration (LHS)\n", lhs);
+        }
+
+        // Check RHS variables
+        char var[64];
+        const char *p = rhs;
+        while (*p) {
+            if (APHABETIC_CHARACTER(*p)) {
+                int j = 0;
+                while (ALPHANUMERIC_CHARACTER(*p) && j < 63) {
+                    var[j++] = *p++;
+                }
+                var[j] = '\0';
+
+                // Is this variable declared?
+                int found = 0;
+                int initialized = 0;
+                for (size_t k = 0; k < symbol_count; ++k) {
+                    if (strcmp(symbol_table[k].name, var) == 0) {
+                        found = 1;
+                        initialized = symbol_table[k].initialized;
+                        break;
+                    }
+                }
+                if (!found) {
+                    printf("Semantic Error: Variable '%s' used before declaration (RHS)\n", var);
+                } else if (!initialized) {
+                    printf("Semantic Warning: Variable '%s' may be used uninitialized\n", var);
+                }
+            } else {
+                p++; // skip operators / numbers
+            }
+        }
+
+        // Mark LHS as initialized if it exists
+        if (lhs_found) {
+            for (size_t i = 0; i < symbol_count; ++i) {
+                if (strcmp(symbol_table[i].name, lhs) == 0) {
+                    symbol_table[i].initialized = 1;
+                    break;
+                }
+            }
+        }
+
+        return;
+    }
+
+    // --- 4) Check other variable usage in expressions ---
+    const char *p = temp;
+    char var[64];
+    while (*p) {
+        if (APHABETIC_CHARACTER(*p)) {
+            int j = 0;
+            while (ALPHANUMERIC_CHARACTER(*p) && j < 63) {
+                var[j++] = *p++;
+            }
+            var[j] = '\0';
+
+            int found = 0;
+            int initialized = 0;
+            for (size_t k = 0; k < symbol_count; ++k) {
+                if (strcmp(symbol_table[k].name, var) == 0) {
+                    found = 1;
+                    initialized = symbol_table[k].initialized;
+                    break;
+                }
+            }
+            if (!found) {
+                printf("Semantic Error: Variable '%s' used before declaration\n", var);
+            } else if (!initialized) {
+                printf("Semantic Warning: Variable '%s' may be used uninitialized\n", var);
+            }
+        } else {
+            p++;
+        }
+    }
+}
 
 /* ---------- trims white space ----------*/
 static void white_space_trim(char *s) {
@@ -245,6 +357,7 @@ static void white_space_trim(char *s) {
     }
 }
 
+/* ---------- Skip escape sequences and comments ---------- */
 char *skip_escape_sequences_and_comments(const char *source_code, int *i, int *line) {
     while(source_code[*i] != '\0') {
         if(ESCAPE_SEQUENCE(source_code[*i])) {
@@ -273,4 +386,13 @@ char *skip_escape_sequences_and_comments(const char *source_code, int *i, int *l
             break;
         }
     }
+}
+
+/* ---------- Symbol table functions ---------- */
+void add_variable(const char *name, int value, int initialized) {
+    if (symbol_count >= MAX_SYMBOLS) return;
+    strncpy(symbol_table[symbol_count].name, name, 63);
+    symbol_table[symbol_count].value = value;
+    symbol_table[symbol_count].initialized = initialized;
+    symbol_count++;
 }

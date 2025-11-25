@@ -26,3 +26,9 @@ git add <file_name>
 
 # 3. Push the local commits to the remote branch (assuming you are on 'main')
 git push origin main
+
+printf("\n==============================");
+    printf("\nmade & presented by:");
+    printf("\nPhillip Nathanael Quieta");
+    printf("\nCharles Jayson Jaques");
+    printf("\n==============================\n");
