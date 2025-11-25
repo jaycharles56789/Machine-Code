@@ -26,6 +26,7 @@ size_t symbol_count = 0;
 
 /* ---------- Functions prototype ---------- */
 char *open_source_file();
+void process_statements(const char *source_code, FILE *output_file);
 void compile_to_assemble(const char *source_code, const char *);
 void lexical_analyzer(const char *source_code);
 void parsing_statement(const char *token);
@@ -35,8 +36,6 @@ char *skip_escape_sequences_and_comments(const char *source_code, int *i, int *l
 void add_variable(const char *name, int value, int initialized);
 
 int main(void) {
-
-    
 
     char *source_code = open_source_file();
     if(source_code == NULL) {
@@ -96,30 +95,8 @@ void compile_to_assemble(const char *source_code, const char *file_name) {
         fclose(output_file);
         return;
     }
-
-    const char *p = duplecated_source;
-    while (*p) {
-        const char *semi = strchr(p, ';'); // find next semicolon
-        if (!semi) {
-            printf("Syntax Error: Missing semicolon in statement '%s'\n", p);
-            break;
-        }
     
-        size_t len = semi - p + 1; // include semicolon
-        char stmt[512];
-        strncpy(stmt, p, len);
-        stmt[len] = '\0';
-        white_space_trim(stmt);
-    
-        if (stmt[0] != '\0') {
-            semantic_analyzer(stmt);   // statement still has semicolon
-            parsing_statement(stmt);   // parse variable declarations
-        }
-    
-        p = semi + 1; // move past this semicolon
-    }
-
-    lexical_analyzer(duplecated_source);
+    process_statements(duplecated_source, output_file);
 
     free(duplecated_source);
     duplecated_source = NULL;
@@ -341,6 +318,126 @@ void semantic_analyzer(const char *token) {
     }
 }
 
+void make_assembly(FILE *output_file) {
+    for (size_t i = 0; i < symbol_count; ++i) {
+        // Reserve space for each variable in registers (simplified)
+        const char *reg_code = get_register_code(symbol_table[i].name);
+        if (!reg_code) continue;
+        if (symbol_table[i].initialized) {
+            fprintf(output_file, "LI %s, %d\n", symbol_table[i].name, symbol_table[i].value);
+        } else {
+            fprintf(output_file, "LI %s, 0\n", symbol_table[i].name); // default 0
+        }
+    }
+}
+
+void make_assembly_for_statement(FILE *output_file, const char *stmt) {
+    if (!stmt || !output_file) return;
+
+    char temp[256];
+    strncpy(temp, stmt, sizeof(temp)-1);
+    temp[sizeof(temp)-1] = '\0';
+    white_space_trim(temp);
+
+    if (temp[0] == '\0') return;
+
+    // --- Variable declaration ---
+    if (strncmp(temp, "int ", 4) == 0) {
+        char var_name[64];
+        if (sscanf(temp + 4, "%63[^=;]", var_name) == 1) {
+            white_space_trim(var_name);
+            fprintf(output_file, "# reserve memory for %s\n", var_name);
+        }
+        return;
+    }
+
+    // --- Assignment x = 5; ---
+    char var_name[64];
+    int value;
+    if (sscanf(temp, "%63[^=] = %d;", var_name, &value) == 2) {
+        white_space_trim(var_name);
+        fprintf(output_file, "daddi r1, r0, %d\n", value);
+        fprintf(output_file, "# load immediate %d into r1\n", value);
+        fprintf(output_file, "sb r1, %s(r0)\n", var_name);
+        fprintf(output_file, "# store r1 into variable %s\n\n", var_name);
+        return;
+    }
+
+    // --- Arithmetic (simple binary ops) ---
+    char lhs[64], rhs1[64], rhs2[64];
+    char op;
+    if (sscanf(temp, "%63[^=] = %63[^ ] %c %63s;", lhs, rhs1, &op, rhs2) == 4) {
+        white_space_trim(lhs); white_space_trim(rhs1); white_space_trim(rhs2);
+
+        // Load operands
+        fprintf(output_file, "lb r2, %s(r0)\n", rhs1);
+        fprintf(output_file, "# load %s into r2\n", rhs1);
+        fprintf(output_file, "lb r4, %s(r0)\n", rhs2);
+        fprintf(output_file, "# load %s into r4\n", rhs2);
+
+        if (op == '+') {
+            fprintf(output_file, "dadd r1, r2, r4\n");
+            fprintf(output_file, "# r1 = %s + %s\n", rhs1, rhs2);
+        } else if (op == '-') {
+            fprintf(output_file, "dsub r1, r2, r4\n");
+            fprintf(output_file, "# r1 = %s - %s\n", rhs1, rhs2);
+        } else if (op == '*') {
+            fprintf(output_file, "dmult r2, r4\n");
+            fprintf(output_file, "# multiply %s and %s\n", rhs1, rhs2);
+            fprintf(output_file, "mflo r3\n");
+            fprintf(output_file, "# move lower 64 bits to r3\n");
+            fprintf(output_file, "dadd r1, r2, r3\n"); // optional final sum to store
+        } else if (op == '/') {
+            fprintf(output_file, "ddiv r2, r4\n");
+            fprintf(output_file, "# divide %s by %s\n", rhs1, rhs2);
+            fprintf(output_file, "mflo r3\n");
+            fprintf(output_file, "# move quotient to r3\n");
+            fprintf(output_file, "dadd r1, r2, r3\n"); // optional
+        }
+
+        fprintf(output_file, "sb r1, %s(r0)\n", lhs);
+        fprintf(output_file, "# store result into %s\n\n", lhs);
+
+        return;
+    }
+
+    // Skip unrecognized or commented statements
+}
+
+void process_statements(const char *source_code, FILE *output_file) {
+    int i = 0, line = 1;
+    while (source_code[i] != '\0') {
+        skip_escape_sequences_and_comments(source_code, &i, &line);
+
+        int start = i;
+        while (source_code[i] != '\0' && source_code[i] != ';') i++;
+        if (i > start) {
+            char stmt[256];
+            int len = i - start;
+            strncpy(stmt, &source_code[start], len);
+            stmt[len] = '\0';
+            white_space_trim(stmt);
+            
+            if (stmt[0] != '\0') {
+                make_assembly_for_statement(output_file, stmt);
+            }
+        }
+        
+        if (source_code[i] == ';') i++; // skip semicolon
+    }
+}
+
+/* ---------- Symbol table functions ---------- */
+void add_variable(const char *name, int value, int initialized) {
+    if (symbol_count >= MAX_SYMBOLS) return;
+
+    strncpy(symbol_table[symbol_count].name, name, 63);
+
+    symbol_table[symbol_count].value = value;
+    symbol_table[symbol_count].initialized = initialized;
+    symbol_count++;
+}
+
 /* ---------- trims white space ----------*/
 static void white_space_trim(char *s) {
     char *p = s;
@@ -381,18 +478,8 @@ char *skip_escape_sequences_and_comments(const char *source_code, int *i, int *l
             if(source_code[*i] != '\0') {
                 (*i) += 2; // Skip the */
             }
-
         } else {
             break;
         }
     }
-}
-
-/* ---------- Symbol table functions ---------- */
-void add_variable(const char *name, int value, int initialized) {
-    if (symbol_count >= MAX_SYMBOLS) return;
-    strncpy(symbol_table[symbol_count].name, name, 63);
-    symbol_table[symbol_count].value = value;
-    symbol_table[symbol_count].initialized = initialized;
-    symbol_count++;
 }
