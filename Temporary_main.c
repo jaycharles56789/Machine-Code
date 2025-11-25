@@ -30,7 +30,7 @@ typedef struct {
 char *open_source_file();
 void compile_to_assemble(const char *source_code, const char *);
 void lexical_analyzer(const char *source_code);
-void parsing_statement();
+void parsing_statement(const char *statement);
 char *skip_escape_sequences_and_comments(const char *source_code, int *i, int *line);
 static void white_space_trim(char *s);
 
@@ -97,24 +97,23 @@ void compile_to_assemble(const char *source_code, const char *file_name) {
     }
 
     // Duplicate source_code to mutable buffer
-    char *source_buff = strdup(source_code ? source_code : "");
-    if(source_buff == NULL) {
+    char *duplecated_source_ = strdup(source_code ? source_code : "");
+    if(duplecated_source_ == NULL) {
         fprintf(stderr, "ERROR: Memory allocation failed.\n");
         fclose(output_file);
         return;
     }
 
-    lexical_analyzer(source_buff);
+    lexical_analyzer(duplecated_source_);
 
-    free(source_buff);
-    source_buff = NULL;
+    free(duplecated_source_);
+    duplecated_source_ = NULL;
 
     fclose(output_file);
 }
 
 void lexical_analyzer(const char *source_code) {
-    int i = 0;
-    int line = 1;
+    int i = 0, line = 1;
 
     while(source_code[i] != '\0') {
         skip_escape_sequences_and_comments(source_code, &i, &line);
@@ -135,6 +134,8 @@ void lexical_analyzer(const char *source_code) {
             token[length] = '\0';
 
             printf("Line %d: Identifier/Keyword: %s\n", line, token);
+
+            parsing_statement(token);
 
             free(token);
         } else if(DIGIT_CHARACTER(source_code[i])) {
@@ -163,8 +164,70 @@ void lexical_analyzer(const char *source_code) {
 }
 
 void parsing_statement(const char *statement) {
-    // TODO: do this 
+    if (!statement) return;
+
+    char temp[256];
+    strncpy(temp, statement, sizeof(temp)-1);
+    temp[sizeof(temp)-1] = '\0';
+    white_space_trim(temp);
+
+    if (temp[0] == '\0') return;
+
+    // --- Variable declaration ---
+    if (strncmp(temp, "int ", 4) == 0) {
+        char var_name[64];
+        int value = 0;
+        int initialized = 0;
+
+        if (sscanf(temp + 4, "%63[^=;] = %d", var_name, &value) == 2) {
+            initialized = 1;
+        } else if (sscanf(temp + 4, "%63[^;]", var_name) == 1) {
+            initialized = 0;
+        } else {
+            printf("Syntax error in declaration: %s\n", temp);
+            return;
+        }
+
+        white_space_trim(var_name);
+
+        printf("Declare variable: %s, value=%d, initialized=%d\n",
+               var_name, value, initialized);
+        return;
+    }
+
+    // --- R-type instruction ---
+    char instr[16];
+    sscanf(temp, "%15s", instr);
+
+    const R_type *r = get_r_type(instr);
+    if (r) {
+        char rd[8], rs[8], rt[8];
+        if (sscanf(temp + strlen(instr), " %7[^,], %7[^,], %7s", rd, rs, rt) != 3) {
+            printf("Invalid R-type format: %s\n", temp);
+            return;
+        }
+
+        white_space_trim(rd);
+        white_space_trim(rs);
+        white_space_trim(rt);
+
+        const char *rd_code = get_reg_code(rd);
+        const char *rs_code = get_reg_code(rs);
+        const char *rt_code = get_reg_code(rt);
+
+        if (!rd_code || !rs_code || !rt_code) {
+            printf("Unknown register in instruction: %s\n", temp);
+            return;
+        }
+
+        printf("R-type binary: %s%s%s%s%s\n",
+               r->Op_code, rs_code, rt_code, rd_code, r->Shamt, r->Funct);
+        return;
+    }
+
+    printf("Unrecognized statement: %s\n", temp);
 }
+
 
 /* ---------- trims white space ----------*/
 static void white_space_trim(char *s) {

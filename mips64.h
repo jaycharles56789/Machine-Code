@@ -1,18 +1,21 @@
 #ifndef MIPS64_H
 #define MIPS64_H
 
-#include <stddef.h>
+const char *get_register_code(const char *name);
+
+const char *get_i_type_code(const char *name);
 
 typedef struct {
-    const char *name;
-    const char *code;
-} Reg;
+    const char *Name;
+    const char *Op_code;
+    const char *Shamt;
+    const char *Funct;
+} R_type;
 
-/* Extern declaration */
-extern const Reg regs[];
-extern const size_t regs_count;
+extern const R_type r_type[];
+extern const size_t r_type_count;
 
-const char *get_register_code(const char *name);
+const R_type *get_r_type_code(const char *name);
 
 #endif 
 

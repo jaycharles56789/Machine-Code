@@ -1,22 +1,24 @@
-#include <stdio.h>
 #include <string.h>
 #include "mips64.h"
 
-typedef struct { const char *mn; const char *op; } Ientry;
+typedef struct {
+    const char *Name;
+    const char *Op_code;
+} I_type;
 
-static const Ientry itab[] = {
+static const I_type i_type[] = {
     {"DADDIU", "011001"},
     {"SB",     "101000"},
     {"LB",     "100000"}
 };
 
-int get_i_opcode(const char *mnemonic, char out_code[OPCODE_LEN]) {
-    for (size_t i = 0; i < sizeof(itab)/sizeof(itab[0]); ++i) {
-        if (strcmp(itab[i].mn, mnemonic) == 0) {
-            strncpy(out_code, itab[i].op, OPCODE_LEN);
-            out_code[OPCODE_LEN-1] = '\0';
-            return 1;
+const size_t i_type_count = sizeof(i_type) / sizeof(i_type[0]);
+
+const char *get_i_type_code(const char *name) {
+    for (size_t i = 0; i < i_type_count; ++i) {
+        if (strcmp(i_type[i].Name, name) == 0) {
+            return i_type[i].Op_code;
         }
     }
-    return 0;
+    return NULL; // Not found
 }
