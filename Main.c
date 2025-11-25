@@ -82,22 +82,20 @@ char* source_file() {
     return line_of_code;
 }
 
-int main(){
-    char input[128], clean_input[128];
-    char var1[32], var2[32], var3[32];
-    char reg1[5], reg2[5], reg3[5];
-    int  value=0;
-    char assembly[256];
-    char opcode[7], funct[7];
-    char rs_code[6], rt_code[6], rd_code[6], imm_bin[17];
-    char machine_code[33], hexcode[11];
-    char op;
+int main(int argc, char *argv[]) {
+
+    (void)argc;
+    (void)argv;
 
     char *source = source_file();
     if(source == NULL) {
         return 1;
     }
+
     printf("input source code:\n%s\n", source);
+    
+    char file_name[] = "assembly.asm";
+    compile_to_assemble(source, file_name);
 
     printf("Enter a C-based assignment or arithmetic operation:\n");
     fgets(input,sizeof(input),stdin);

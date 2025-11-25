@@ -45,18 +45,18 @@ int main(int argc, char *argv[]) {
     // }
     // char *source_coude = argv[1];
 
-    char *source_coude = open_source_file();
-    if(source_coude == NULL) {
+    char *source_code = open_source_file();
+    if(source_code == NULL) {
         return 1;
     }
 
-    printf("input source code:\n%s\n", source_coude);
+    printf("input source code:\n%s\n", source_code);
     
     char file_name[] = "assembly.asm";
-    compile_to_assemble(source_coude , file_name);
+    compile_to_assemble(source_code , file_name);
 
-    free(source_coude);
-    source_coude = NULL;
+    free(source_code);
+    source_code = NULL;
 
     return 0;
 }
