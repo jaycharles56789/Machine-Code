@@ -36,7 +36,7 @@ typedef struct {
 char *open_source_file(const char *filename);
 void process_statements(const char *source_code, FILE *output_file);
 void compile_to_assemble(const char *source_code, const char *filename);
-static void white_space_trim(char *s);
+void white_space_trim(char *s);
 void skip_escape_sequences_and_comments(const char *source_code, int *i, int *line);
 void add_variable(const char *name, int value, int initialized);
 Symbol *find_symbol(const char *name);
@@ -448,7 +448,7 @@ Symbol *find_symbol(const char *name) {
 }
 
 /* ---------- Trims white space ----------*/
-static void white_space_trim(char *s) {
+void white_space_trim(char *s) {
     if(!s) return;
     
     char *p = s;
