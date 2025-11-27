@@ -2,7 +2,7 @@
 
 .code
 main:
-	1231321daddiu r8, r0, 5
+	daddiu r8, r0, 5
 	daddiu r9, r0, 10
 	daddiu r10, r0, 15
 	daddu r9, r0, r9

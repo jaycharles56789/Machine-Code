@@ -211,7 +211,7 @@ int evaluate_expression(const char *expr, FILE *output_file, int target_reg) {
     if(token_count == 1) {
         if(DIGIT_CHARACTER(tokens[0][0])) {
             fprintf(output_file, "\tdaddiu r%d, r0, %s\n", target_reg, tokens[0]);
-            fprintf(output_file, "# %s | %s | %s | %s");
+            // fprintf(output_file, "# %s | %s | %s | %s");
         } else {
             Symbol *sym = find_symbol(tokens[0]);
             if(sym && sym->reg_num >= 0) {
@@ -436,7 +436,7 @@ int is_operator(char c) {
     return (c == '+' || c == '-' || c == '*' || c == '/');
 }
 
-void generate_machine_code()
+void generate_machine_code() {}
 
 Symbol *find_symbol(const char *name) {
     for(size_t i = 0; i < symbol_count; i++) {
