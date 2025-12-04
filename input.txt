@@ -1,6 +1,6 @@
-int x;
-x = 5;
-int y = 10;
-int z = 15;
-// a = a;
-x = x - y / z;
+int a; 
+int b;
+a = 1;
+b = 2;
+
+c = a + b;

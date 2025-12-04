@@ -1,399 +1,541 @@
-// Main.c
-// Simple translator: reads C-like statements from a file and writes assembly (.s) with binary comments.
-// Supports: int var; int var = value; var = value; var = var op var  (op = + - * /)
-// Uses shunting-yard to respect operator precedence.
-
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
 
-/* --------- Lookup tables (table-driven) --------- */
-/* Register binary codes (r0..r31 as names and $t0..$t3) */
-typedef struct { const char *name; const char *bin; } RegEntry;
-static const RegEntry reg_table[] = {
-    {"r0","00000"}, {"r1","00001"}, {"r2","00010"}, {"r3","00011"},
-    {"r4","00100"}, {"r5","00101"}, {"r6","00110"}, {"r7","00111"},
-    {"r8","01000"}, {"r9","01001"}, {"r10","01010"}, {"r11","01011"},
-    {"r12","01100"}, {"r13","01101"}, {"r14","01110"}, {"r15","01111"},
-    {"r16","10000"}, {"r17","10001"}, {"r18","10010"}, {"r19","10011"},
-    {"r20","10100"}, {"r21","10101"}, {"r22","10110"}, {"r23","10111"},
-    {"r24","11000"}, {"r25","11001"}, {"r26","11010"}, {"r27","11011"},
-    {"r28","11100"}, {"r29","11101"}, {"r30","11110"}, {"r31","11111"},
-    {"$zero","00000"}, {"$t0","01000"}, {"$t1","01001"}, {"$t2","01010"}, {"$t3","01011"}
-};
+#define ESCAPE_SEQUENCE(c) ((c) == ' ' || (c) == '\n' || (c) == '\t' || (c) == '\r')
+#define ALPHABETIC_CHARACTER(c) (((c) >= 'a' && (c) <= 'z') || ((c) >= 'A' && (c) <= 'Z') || (c) == '_')
+#define DIGIT_CHARACTER(c) ((c) >= '0' && (c) <= '9')
+#define ALPHANUMERIC_CHARACTER(c) (ALPHABETIC_CHARACTER(c) || DIGIT_CHARACTER(c))
 
-/* R-type and I-type instruction table */
-typedef struct { const char *mnemonic; const char *opcode; const char *funct; int isI; } InstEntry;
-static const InstEntry inst_table[] = {
-    {"DADDIU", "011001", "", 1},   // I-type
-    {"SB",     "101000", "", 1},   // I-type store byte (we will use base in rs, rt contains source)
-    {"LB",     "100000", "", 1},   // I-type load byte
-    {"DMULT",  "000000", "000010", 0}, // R-type use "DMULT" to emit dmult (we'll map to special style)
-    {"DMUL",   "000000", "000010", 0}, // alias
-    {"DDIV",   "000000", "000110", 0},
-    {"DADDU",  "000000", "000000", 0},
-    {"DSUBU",  "000000", "000011", 0},
-    {"MFLO",   "000000", "000000", 0} // We'll generate mflo as special (treated as pseudo R-type with funct)
-};
+// symbol table 
+#define MAX_SYMBOLS 128
+typedef struct {
+    char name[64];
+    int value;
+    int initialized;
+    int mem_offset; // Memory offset for the variable
+} Symbol;
 
-/* Utility: find register binary */
-const char *reg_to_bin(const char *rname) {
-    for (size_t i = 0; i < sizeof(reg_table)/sizeof(reg_table[0]); ++i) {
-        if (strcmp(reg_table[i].name, rname) == 0) return reg_table[i].bin;
+Symbol symbol_table[MAX_SYMBOLS];
+size_t symbol_count = 0;
+
+// Expression parsing
+typedef struct {
+    char op;
+    int precedence;
+} Operator;
+
+// function prototypes
+char *open_source_file(const char *filename);
+void process_statements(const char *source_code, FILE *output_file);
+void compile_to_assemble(const char *source_code, const char *filename);
+void white_space_trim(char *s);
+void skip_escape_sequences_and_comments(const char *source_code, int *i, int *line);
+void add_variable(const char *name, int value, int initialized);
+Symbol *find_symbol(const char *name);
+void make_assembly_for_statement(FILE *output_file, const char *statement);
+int evaluate_expression(const char *expr, FILE *output_file, int target_reg);
+int get_operator_precedence(char op);
+int is_operator(char c);
+void generate_machine_code(const char *instruction, int rs, int rt, int rd, int imm, FILE *output_file);
+unsigned int encode_r_type(int opcode, int rs, int rt, int rd, int shamt, int funct);
+unsigned int encode_i_type(int opcode, int rs, int rt, int imm);
+
+int main(void) {
+    char *source_code = open_source_file("input.txt");
+    if(source_code == NULL) {
+        return 1;
     }
-    return "00000"; // default r0
+
+    printf("\nInput source code:\n%s\n", source_code);
+    
+    char file_name[] = "assembly.asm";
+    compile_to_assemble(source_code, file_name);
+
+    free(source_code);
+    printf("\nAssembly code is generated successfully in '%s'\n", file_name);
+
+    return 0;
 }
 
-/* Utility: find instruction entry */
-const InstEntry *find_inst(const char *mn) {
-    for (size_t i = 0; i < sizeof(inst_table)/sizeof(inst_table[0]); ++i) {
-        if (strcmp(inst_table[i].mnemonic, mn) == 0) return &inst_table[i];
+// Read C variable from file
+char *open_source_file(const char *filename) {
+    FILE *source_code = fopen(filename, "r");
+    if(source_code == NULL) {
+        fprintf(stderr, "ERROR: File '%s' cannot be opened.\n", filename);
+        return NULL;
+    }
+
+    // Allocate initial buffer
+    size_t buffer_size = 1024;
+    size_t total_length = 0;
+    char *line_of_code = (char *)malloc(buffer_size * sizeof(char));
+    
+    if(line_of_code == NULL) {
+        fprintf(stderr, "ERROR: Memory allocation failed.\n");
+        fclose(source_code);
+        return NULL;
+    }
+    
+    line_of_code[0] = '\0';
+    
+    char lines[256];
+    while(fgets(lines, sizeof(lines), source_code) != NULL) {
+        size_t line_len = strlen(lines);
+        
+        // Resize buffer if needed
+        if(total_length + line_len + 1 >= buffer_size) {
+            buffer_size *= 2;
+            char *new_buffer = (char *)realloc(line_of_code, buffer_size);
+            if(new_buffer == NULL) {
+                fprintf(stderr, "ERROR: Memory reallocation failed.\n");
+                free(line_of_code);
+                fclose(source_code);
+                return NULL;
+            }
+            line_of_code = new_buffer;
+        }
+        
+        strcat(line_of_code, lines);
+        total_length += line_len;
+    }
+
+    fclose(source_code);
+    return line_of_code;
+}
+
+//Compiled to runnable EduMIPS64
+void compile_to_assemble(const char *source_code, const char *file_name) {
+    FILE *output_file = fopen(file_name, "w");
+    if(output_file == NULL) {
+        fprintf(stderr, "ERROR: '%s' can't be created\n", file_name);
+        return;
+    }
+
+    fprintf(output_file, ".data\n");
+    
+    char *duplicated_source = strdup(source_code ? source_code : "");
+    if(duplicated_source == NULL) {
+        fprintf(stderr, "ERROR: Memory allocation failed.\n");
+        fclose(output_file);
+        return;
+    }
+    
+    // First pass: collect all variable declarations
+    process_statements(duplicated_source, NULL);
+    
+    // Write variable declarations in .data section
+    for(size_t i = 0; i < symbol_count; i++) {
+        fprintf(output_file, "%s:\t.byte %d\n", symbol_table[i].name, symbol_table[i].value);
+    }
+    
+    fprintf(output_file, "\n.code\n");
+    fprintf(output_file, "main:\n");
+    
+    // Reset source for second pass
+    free(duplicated_source);
+    duplicated_source = strdup(source_code ? source_code : "");
+    
+    // Second pass: generate code
+    process_statements(duplicated_source, output_file);
+
+    fprintf(output_file, "\n\thalt\n");
+
+    free(duplicated_source);
+    fclose(output_file);
+}
+
+void process_statements(const char *source_code, FILE *output_file) {
+    int i = 0, line = 1;
+    
+    while (source_code[i] != '\0') {
+        skip_escape_sequences_and_comments(source_code, &i, &line);
+        if(source_code[i] == '\0') break;
+
+        int start = i;
+        // Find end of statement (semicolon)
+        while (source_code[i] != '\0' && source_code[i] != ';') {
+            if(source_code[i] == '\n') line++;
+            i++;
+        }
+        
+        if (i > start) {
+            int len = i - start;
+            char *statement = (char *)malloc(len + 2);
+            if(statement) {
+                strncpy(statement, &source_code[start], len);
+                statement[len] = '\0';
+                white_space_trim(statement);
+                
+                if (statement[0] != '\0' && statement[0] != ';') {
+                    make_assembly_for_statement(output_file, statement);
+                }
+                free(statement);
+            }
+        }
+        
+        if (source_code[i] == ';') i++;
+    }
+}
+
+// Evaluate expression with proper operator precedence
+int evaluate_expression(const char *expr, FILE *output_file, int target_reg) {
+    if(!output_file) return -1; // First pass, don't generate code
+    
+    char tokens[64][64];
+    int token_count = 0;
+    int i = 0;
+    
+    // Tokenize expression
+    while(expr[i] != '\0' && token_count < 64) {
+        while(isspace(expr[i])) i++;
+        if(expr[i] == '\0') break;
+        
+        if(ALPHABETIC_CHARACTER(expr[i])) {
+            // Variable name
+            int j = 0;
+            while(ALPHANUMERIC_CHARACTER(expr[i]) && j < 63) {
+                tokens[token_count][j++] = expr[i++];
+            }
+            tokens[token_count][j] = '\0';
+            token_count++;
+        } else if(DIGIT_CHARACTER(expr[i])) {
+            // Number
+            int j = 0;
+            while(DIGIT_CHARACTER(expr[i]) && j < 63) {
+                tokens[token_count][j++] = expr[i++];
+            }
+            tokens[token_count][j] = '\0';
+            token_count++;
+        } else if(is_operator(expr[i])) {
+            tokens[token_count][0] = expr[i];
+            tokens[token_count][1] = '\0';
+            token_count++;
+            i++;
+        } else {
+            i++;
+        }
+    }
+    
+    if(token_count == 0) return -1;
+    
+    // Handle single operand (just assignment)
+    if(token_count == 1) {
+        if(DIGIT_CHARACTER(tokens[0][0])) {
+            fprintf(output_file, "\tdaddiu r%d, r0, %s\t\t", target_reg, tokens[0]);
+            generate_machine_code("daddiu", 0, target_reg, -1, atoi(tokens[0]), output_file);
+        } else {
+            Symbol *sym = find_symbol(tokens[0]);
+            if(sym) {
+                fprintf(output_file, "\tlb r%d, %s(r0)\t\t", target_reg, sym->name);
+                generate_machine_code("lb", 0, target_reg, -1, sym->mem_offset, output_file);
+            }
+        }
+        return target_reg;
+    }
+    
+    // Simple two-operand expression with one operator
+    if(token_count == 3) {
+        int reg1 = target_reg + 1;
+        int reg2 = target_reg + 2;
+        
+        // Load first operand
+        if(DIGIT_CHARACTER(tokens[0][0])) {
+            fprintf(output_file, "\tdaddiu r%d, r0, %s\t\t", reg1, tokens[0]);
+            generate_machine_code("daddiu", 0, reg1, -1, atoi(tokens[0]), output_file);
+        } else {
+            Symbol *sym = find_symbol(tokens[0]);
+            if(sym) {
+                fprintf(output_file, "\tlb r%d, %s(r0)\t\t", reg1, sym->name);
+                generate_machine_code("lb", 0, reg1, -1, sym->mem_offset, output_file);
+            }
+        }
+        
+        // Load second operand
+        if(DIGIT_CHARACTER(tokens[2][0])) {
+            fprintf(output_file, "\tdaddiu r%d, r0, %s\t\t", reg2, tokens[2]);
+            generate_machine_code("daddiu", 0, reg2, -1, atoi(tokens[2]), output_file);
+        } else {
+            Symbol *sym = find_symbol(tokens[2]);
+            if(sym) {
+                fprintf(output_file, "\tlb r%d, %s(r0)\t\t", reg2, sym->name);
+                generate_machine_code("lb", 0, reg2, -1, sym->mem_offset, output_file);
+            }
+        }
+        
+        // Perform operation
+        char op = tokens[1][0];
+        if(op == '+') {
+            fprintf(output_file, "\tdaddu r%d, r%d, r%d\t\t", target_reg, reg1, reg2);
+            generate_machine_code("daddu", reg1, reg2, target_reg, 0, output_file);
+        } else if(op == '-') {
+            fprintf(output_file, "\tdsubu r%d, r%d, r%d\t\t", target_reg, reg1, reg2);
+            generate_machine_code("dsubu", reg1, reg2, target_reg, 0, output_file);
+        } else if(op == '*') {
+            fprintf(output_file, "\tdmult r%d, r%d\t\t", reg1, reg2);
+            generate_machine_code("dmult", reg1, reg2, -1, 0, output_file);
+            fprintf(output_file, "\tmflo r%d\t\t\t", target_reg);
+            generate_machine_code("mflo", 0, 0, target_reg, 0, output_file);
+        } else if(op == '/') {
+            fprintf(output_file, "\tddiv r%d, r%d\t\t", reg1, reg2);
+            generate_machine_code("ddiv", reg1, reg2, -1, 0, output_file);
+            fprintf(output_file, "\tmflo r%d\t\t\t", target_reg);
+            generate_machine_code("mflo", 0, 0, target_reg, 0, output_file);
+        }
+        
+        return target_reg;
+    }
+    
+    // Complex expression: evaluate with precedence (simplified)
+    // For "x - y / z", we need to do division first
+    int highest_prec_idx = -1;
+    int highest_prec = -1;
+    
+    for(int j = 1; j < token_count; j += 2) {
+        if(is_operator(tokens[j][0])) {
+            int prec = get_operator_precedence(tokens[j][0]);
+            if(prec > highest_prec) {
+                highest_prec = prec;
+                highest_prec_idx = j;
+            }
+        }
+    }
+    
+    if(highest_prec_idx > 0) {
+        // Evaluate high precedence operation first
+        int reg1 = target_reg + 1;
+        int reg2 = target_reg + 2;
+        int result_reg = target_reg + 3;
+        
+        // Load operands for high precedence op
+        char *left = tokens[highest_prec_idx - 1];
+        char *right = tokens[highest_prec_idx + 1];
+        char op = tokens[highest_prec_idx][0];
+        
+        if(DIGIT_CHARACTER(left[0])) {
+            fprintf(output_file, "\tdaddiu r%d, r0, %s\t\t", reg1, left);
+            generate_machine_code("daddiu", 0, reg1, -1, atoi(left), output_file);
+        } else {
+            Symbol *sym = find_symbol(left);
+            if(sym) {
+                fprintf(output_file, "\tlb r%d, %s(r0)\t\t", reg1, sym->name);
+                generate_machine_code("lb", 0, reg1, -1, sym->mem_offset, output_file);
+            }
+        }
+        
+        if(DIGIT_CHARACTER(right[0])) {
+            fprintf(output_file, "\tdaddiu r%d, r0, %s\t\t", reg2, right);
+            generate_machine_code("daddiu", 0, reg2, -1, atoi(right), output_file);
+        } else {
+            Symbol *sym = find_symbol(right);
+            if(sym) {
+                fprintf(output_file, "\tlb r%d, %s(r0)\t\t", reg2, sym->name);
+                generate_machine_code("lb", 0, reg2, -1, sym->mem_offset, output_file);
+            }
+        }
+        
+        // Perform high precedence operation
+        if(op == '*') {
+            fprintf(output_file, "\tdmult r%d, r%d\t\t", reg1, reg2);
+            generate_machine_code("dmult", reg1, reg2, -1, 0, output_file);
+            fprintf(output_file, "\tmflo r%d\t\t\t", result_reg);
+            generate_machine_code("mflo", 0, 0, result_reg, 0, output_file);
+        } else if(op == '/') {
+            fprintf(output_file, "\tddiv r%d, r%d\t\t", reg1, reg2);
+            generate_machine_code("ddiv", reg1, reg2, -1, 0, output_file);
+            fprintf(output_file, "\tmflo r%d\t\t\t", result_reg);
+            generate_machine_code("mflo", 0, 0, result_reg, 0, output_file);
+        }
+        
+        // Now handle remaining operations
+        if(highest_prec_idx >= 2) {
+            int reg_left = target_reg + 4;
+            char *leftmost = tokens[0];
+            
+            if(DIGIT_CHARACTER(leftmost[0])) {
+                fprintf(output_file, "\tdaddiu r%d, r0, %s\t\t", reg_left, leftmost);
+                generate_machine_code("daddiu", 0, reg_left, -1, atoi(leftmost), output_file);
+            } else {
+                Symbol *sym = find_symbol(leftmost);
+                if(sym) {
+                    fprintf(output_file, "\tlb r%d, %s(r0)\t\t", reg_left, sym->name);
+                    generate_machine_code("lb", 0, reg_left, -1, sym->mem_offset, output_file);
+                }
+            }
+            
+            char op2 = tokens[1][0];
+            if(op2 == '+') {
+                fprintf(output_file, "\tdaddu r%d, r%d, r%d\t\t", target_reg, reg_left, result_reg);
+                generate_machine_code("daddu", reg_left, result_reg, target_reg, 0, output_file);
+            } else if(op2 == '-') {
+                fprintf(output_file, "\tdsubu r%d, r%d, r%d\t\t", target_reg, reg_left, result_reg);
+                generate_machine_code("dsubu", reg_left, result_reg, target_reg, 0, output_file);
+            }
+        }
+    }
+    
+    return target_reg;
+}
+
+void make_assembly_for_statement(FILE *output_file, const char *statement) {
+    if (!statement) return;
+
+    char temp[512];
+    strncpy(temp, statement, sizeof(temp)-1);
+    temp[sizeof(temp)-1] = '\0';
+    white_space_trim(temp);
+
+    if (temp[0] == '\0') return;
+
+    // Variable declaration: int x; or int y = 10;
+    if (strncmp(temp, "int ", 4) == 0) {
+        char var_name[64];
+        int value = 0;
+        int initialized = 0;
+
+        if (sscanf(temp + 4, "%63[^=;] = %d", var_name, &value) == 2) {
+            initialized = 1;
+            white_space_trim(var_name);
+            add_variable(var_name, value, initialized);
+            
+            // Generate store instruction only if output_file exists (second pass)
+            if(output_file) {
+                Symbol *sym = find_symbol(var_name);
+                if(sym) {
+                    fprintf(output_file, "\tdaddiu r8, r0, %d\n", value);
+                    fprintf(output_file, "\tsb r8, %s(r0)\n", sym->name);
+                }
+            }
+        } else if (sscanf(temp + 4, "%63[^;]", var_name) == 1) {
+            white_space_trim(var_name);
+            add_variable(var_name, 0, 0);
+        }
+        return;
+    }
+
+    // Assignment: x = ...;
+    char *eq_pos = strchr(temp, '=');
+    if(eq_pos != NULL && output_file) {
+        char lhs[64];
+        char rhs[256];
+        
+        int lhs_len = eq_pos - temp;
+        strncpy(lhs, temp, lhs_len);
+        lhs[lhs_len] = '\0';
+        white_space_trim(lhs);
+        
+        strcpy(rhs, eq_pos + 1);
+        white_space_trim(rhs);
+        
+        Symbol *sym = find_symbol(lhs);
+        if(sym) {
+            // Mark as initialized
+            sym->initialized = 1;
+            
+            // Evaluate RHS expression into r8
+            evaluate_expression(rhs, output_file, 8);
+            
+            // Store result to memory
+            fprintf(output_file, "\tsb r8, %s(r0)\n", sym->name);
+        }
+        return;
+    }
+}
+
+// Symbol table functions
+void add_variable(const char *name, int value, int initialized) {
+    if (symbol_count >= MAX_SYMBOLS) return;
+
+    // Check if already exists
+    for(size_t i = 0; i < symbol_count; i++) {
+        if(strcmp(symbol_table[i].name, name) == 0) {
+            symbol_table[i].value = value;
+            symbol_table[i].initialized = initialized;
+            return;
+        }
+    }
+
+    strncpy(symbol_table[symbol_count].name, name, 63);
+    symbol_table[symbol_count].name[63] = '\0';
+    symbol_table[symbol_count].value = value;
+    symbol_table[symbol_count].initialized = initialized;
+    symbol_table[symbol_count].mem_offset = symbol_count; // Memory offset
+    
+    symbol_count++;
+}
+
+int get_operator_precedence(char op) {
+    switch(op) {
+        case '*':
+        case '/': return 2;
+        case '+':
+        case '-': return 1;
+        default: return 0;
+    }
+}
+
+int is_operator(char c) {
+    return (c == '+' || c == '-' || c == '*' || c == '/');
+}
+
+void generate_machine_code() {}
+
+Symbol *find_symbol(const char *name) {
+    for(size_t i = 0; i < symbol_count; i++) {
+        if(strcmp(symbol_table[i].name, name) == 0) {
+            return &symbol_table[i];
+        }
     }
     return NULL;
 }
 
-/* --------- Simple tokenizer and helpers --------- */
-void trim(char *s) {
-    // remove leading/trailing spaces and '\r' and '\n'
-    int i, j = 0;
-    while (isspace((unsigned char)s[j])) ++j;
-    if (j) memmove(s, s+j, strlen(s+j)+1);
-    i = strlen(s);
-    while (i>0 && isspace((unsigned char)s[i-1])) s[--i] = '\0';
-}
-
-/* map variable name to memory label (same name) and to a register when needed
-   For simplicity we map:
-   a -> r1 (used as temp stores), but for loads/stores we follow sample:
-   We'll use r1 for temporary store/accumulator, r2..r10 for temps
-*/
-const char *var_to_memlabel(const char *var) {
-    return var; // use variable name as label in assembly
-}
-
-/* allocate temporary register names (r2..r10) for expression evaluation */
-int next_temp = 2;
-void reset_temps() { next_temp = 2; }
-char *alloc_temp(char *buf) { // buf must hold e.g. "r10"
-    if (next_temp > 10) next_temp = 2; // wrap (simple)
-    sprintf(buf, "r%d", next_temp++);
-    return buf;
-}
-
-/* ------- Shunting-yard: convert infix to RPN (token array) ------- */
-#define MAXTOK 64
-typedef enum { TOK_VAR, TOK_NUM, TOK_OP } TokType;
-typedef struct { TokType type; char text[32]; char op; } Token;
-
-int precedence(char op) {
-    if (op == '+' || op == '-') return 1;
-    if (op == '*' || op == '/') return 2;
-    return 0;
-}
-
-/* tokenize simple expression (no parentheses expected here) */
-int tokenize_expr(const char *expr, Token tokens[], int *ntok) {
-    *ntok = 0;
-    int i = 0, n = strlen(expr);
-    while (i < n) {
-        if (isspace((unsigned char)expr[i])) { ++i; continue; }
-        if (isalpha((unsigned char)expr[i])) {
-            int j = 0;
-            while (i < n && (isalnum((unsigned char)expr[i]) || expr[i]=='_')) {
-                if (j < 30) tokens[*ntok].text[j++] = expr[i];
-                ++i;
-            }
-            tokens[*ntok].text[j] = 0;
-            tokens[*ntok].type = TOK_VAR;
-            (*ntok)++;
-        } else if (isdigit((unsigned char)expr[i])) {
-            int j = 0;
-            while (i < n && isdigit((unsigned char)expr[i])) {
-                if (j < 30) tokens[*ntok].text[j++] = expr[i];
-                ++i;
-            }
-            tokens[*ntok].text[j] = 0;
-            tokens[*ntok].type = TOK_NUM;
-            (*ntok)++;
-        } else if (strchr("+-*/()", expr[i])) {
-            tokens[*ntok].type = TOK_OP;
-            tokens[*ntok].op = expr[i];
-            tokens[*ntok].text[0] = 0;
-            (*ntok)++;
-            ++i;
-        } else {
-            // unknown char
-            ++i;
-        }
+// Trims white space 
+void white_space_trim(char *s) {
+    if(!s) return;
+    
+    char *p = s;
+    while (*p && isspace((unsigned char)*p)) p++;
+    
+    if (p != s) {
+        memmove(s, p, strlen(p) + 1);
     }
-    return 1;
+
+    char *end = s + strlen(s) - 1;
+    while (end >= s && isspace((unsigned char)*end)) {
+        *end = '\0';
+        end--;
+    }
 }
 
-/* shunting-yard -> output RPN in tokens_out */
-int shunting_yard(Token tokens[], int ntok, Token out[], int *nout) {
-    Token stack[MAXTOK]; int sp = 0;
-    *nout = 0;
-    for (int i = 0; i < ntok; ++i) {
-        Token t = tokens[i];
-        if (t.type == TOK_NUM || t.type == TOK_VAR) {
-            out[(*nout)++] = t;
-        } else if (t.type == TOK_OP) {
-            if (t.op == '(') {
-                stack[sp++] = t;
-            } else if (t.op == ')') {
-                while (sp>0 && stack[sp-1].op != '(') out[(*nout)++] = stack[--sp];
-                if (sp>0 && stack[sp-1].op == '(') --sp;
-            } else {
-                while (sp>0 && stack[sp-1].type==TOK_OP &&
-                       ((precedence(stack[sp-1].op) > precedence(t.op)) ||
-                        (precedence(stack[sp-1].op) == precedence(t.op) && t.op != '^')) &&
-                       stack[sp-1].op != '(') {
-                    out[(*nout)++] = stack[--sp];
+// Skip escape sequences and comments
+void skip_escape_sequences_and_comments(const char *source_code, int *i, int *line) {
+    while(source_code[*i] != '\0') {
+        if(ESCAPE_SEQUENCE(source_code[*i])) {
+            if(source_code[*i] == '\n') {
+                (*line)++;
+            }
+            (*i)++;
+        } else if(source_code[*i] == '/' && source_code[(*i) + 1] == '/') {
+            // Single-line comment
+            while(source_code[*i] != '\0' && source_code[*i] != '\n') {
+                (*i)++;
+            }
+        } else if(source_code[*i] == '/' && source_code[(*i) + 1] == '*') {
+            // Multi-line comment
+            (*i) += 2;
+            while(source_code[*i] != '\0' && 
+                  !(source_code[*i] == '*' && source_code[(*i) + 1] == '/')) {
+                if(source_code[*i] == '\n') {
+                    (*line)++;
                 }
-                stack[sp++] = t;
+                (*i)++;
             }
-        }
-    }
-    while (sp>0) out[(*nout)++] = stack[--sp];
-    return 1;
-}
-
-/* Evaluate RPN and emit assembly lines into out file.
-   We'll return result stored register name in destbuf (e.g. "r3").
-*/
-void eval_rpn_and_emit(Token rpn[], int nrpn, FILE *out, char *destbuf) {
-    // stack of register names or immediate markers
-    char valstack[64][16];
-    int vs = 0;
-    reset_temps();
-    for (int i = 0; i < nrpn; ++i) {
-        Token t = rpn[i];
-        if (t.type == TOK_NUM) {
-            // load immediate into temp r
-            char tmp[8]; alloc_temp(tmp);
-            fprintf(out, "    daddi %s, r0, %s\n", tmp, t.text); // daddi tmp, r0, imm
-            // comment binary (I-type: opcode rs rt imm)
-            const InstEntry *ie = find_inst("DADDIU");
-            const char *opcode = ie ? ie->opcode : "011001";
-            const char *rs = reg_to_bin("r0");
-            const char *rt = reg_to_bin(tmp);
-            // immediate to 16-bit binary
-            int imm = atoi(t.text);
-            char imm16[17]; for (int k=15;k>=0;--k){ imm16[k] = (imm & 1) ? '1' : '0'; imm>>=1; } imm16[16]=0;
-            fprintf(out, "# %s%s%s%s\n", opcode, rs, rt, imm16);
-            strcpy(valstack[vs++], tmp);
-        } else if (t.type == TOK_VAR) {
-            // load memory variable into temp
-            char tmp[8]; alloc_temp(tmp);
-            fprintf(out, "    lb %s, %s(r0)\n", tmp, t.text);
-            const InstEntry *ie = find_inst("LB");
-            const char *opcode = ie ? ie->opcode : "100000";
-            const char *rs = reg_to_bin("r0");
-            const char *rt = reg_to_bin(tmp);
-            char imm16[17]; memset(imm16,'0',16); imm16[16]=0;
-            fprintf(out, "# %s%s%s%s\n", opcode, rs, rt, imm16);
-            strcpy(valstack[vs++], tmp);
-        } else if (t.type == TOK_OP) {
-            // pop two operands (right then left)
-            char right[16]; char left[16];
-            if (vs < 2) { strcpy(destbuf, "r0"); return; }
-            strcpy(right, valstack[--vs]);
-            strcpy(left,  valstack[--vs]);
-            // allocate result register
-            char dst[8]; alloc_temp(dst);
-            // decide instruction based on op
-            if (t.op == '*') {
-                // use dmult left, right ; mflo dst
-                fprintf(out, "    dmult %s, %s\n", left, right);
-                // DMULT binary comment (we output opcode + rs + rt + rd+shamt+funct style for clarity)
-                const InstEntry *ie = find_inst("DMULT");
-                const char *opcode = ie ? ie->opcode : "000000";
-                const char *rs = reg_to_bin(left);
-                const char *rt = reg_to_bin(right);
-                // for mult, we show a 32-bit placeholder: opcode rs rt rd shamt funct
-                char rd_bin[6]; strcpy(rd_bin, "00000");
-                char shamt[6]; strcpy(shamt,"00000");
-                fprintf(out, "# %s%s%s%s%s\n", opcode, rs, rt, rd_bin, ie->funct);
-                // mflo dst
-                fprintf(out, "    mflo %s\n", dst);
-                // comment for mflo: use custom pseudo bits
-                fprintf(out, "# 00000000000000000000000000000000\n");
-            } else if (t.op == '/') {
-                fprintf(out, "    ddiv %s, %s\n", left, right);
-                const InstEntry *ie = find_inst("DDIV");
-                const char *opcode = ie ? ie->opcode : "000000";
-                const char *rs = reg_to_bin(left);
-                const char *rt = reg_to_bin(right);
-                fprintf(out, "# %s%s%s0000000000%s\n", opcode, rs, rt, ie->funct);
-                fprintf(out, "    mflo %s\n", dst);
-                fprintf(out, "# 00000000000000000000000000000000\n");
-            } else if (t.op == '+') {
-                // DADDU dst,left,right
-                fprintf(out, "    dadd %s, %s, %s\n", dst, left, right);
-                const InstEntry *ie = find_inst("DADDU");
-                const char *opcode = ie ? ie->opcode : "000000";
-                const char *rs = reg_to_bin(left);
-                const char *rt = reg_to_bin(right);
-                const char *rd = reg_to_bin(dst);
-                const char *funct = ie ? ie->funct : "000000";
-                // opcode rs rt rd shamt funct
-                fprintf(out, "# %s%s%s%s00000%s\n", opcode, rs, rt, rd, funct);
-            } else if (t.op == '-') {
-                fprintf(out, "    dsub %s, %s, %s\n", dst, left, right);
-                const InstEntry *ie = find_inst("DSUBU");
-                const char *opcode = ie ? ie->opcode : "000000";
-                const char *rs = reg_to_bin(left);
-                const char *rt = reg_to_bin(right);
-                const char *rd = reg_to_bin(dst);
-                const char *funct = ie ? ie->funct : "000011";
-                fprintf(out, "# %s%s%s%s00000%s\n", opcode, rs, rt, rd, funct);
+            if(source_code[*i] != '\0') {
+                (*i) += 2;
             }
-            // push dst as result
-            strcpy(valstack[vs++], dst);
-        }
-    }
-    // final result register name
-    if (vs>0) strcpy(destbuf, valstack[--vs]);
-    else strcpy(destbuf, "r0");
-}
-
-/* --------- Main translation flow per input line ---------- */
-
-void translate_line(const char *line, FILE *out) {
-    char s[256];
-    strcpy(s, line);
-    trim(s);
-    if (strlen(s) == 0) return;
-
-    // print a marker for input (optional)
-    // fprintf(out, "# input: %s\n", s);
-
-    // Declaration only: "int a;" or "int a ;"
-    if (strncmp(s, "int ", 4) == 0 && strchr(s, '=') == NULL) {
-        // just declare; nothing to emit in this simple assembler other than a comment
-        fprintf(out, "    # declare %s\n", s+4);
-        return;
-    }
-
-    // Declaration with init or assignment: "int a = 10;" or "a = 10;"
-    char *eq = strchr(s, '=');
-    if (eq != NULL) {
-        // left side
-        char left[64]; int L = eq - s;
-        strncpy(left, s, L); left[L] = '\0'; trim(left);
-        // right side
-        char right[128]; strcpy(right, eq+1); // may include semicolon
-        // remove trailing semicolon if present
-        char *semi = strchr(right, ';'); if (semi) *semi = '\0';
-        trim(right);
-
-        // If left starts with "int", handle init like "int a = 10"
-        if (strncmp(left, "int ", 4) == 0) {
-            // remove "int "
-            char varname[64]; strcpy(varname, left+4); trim(varname);
-            // if RHS is numeric constant -> immediate store
-            int isnum = 1;
-            for (size_t i=0;i<strlen(right);++i) if (!isdigit((unsigned char)right[i]) && right[i] != '-') { isnum = 0; break; }
-
-            if (isnum) {
-                // load immediate to r1, store to memory label
-                fprintf(out, "    daddi r1, r0, %s\n", right);
-                // I-type: DADDIU opcode(6) rs(5) rt(5) imm(16)
-                const InstEntry *ie = find_inst("DADDIU");
-                const char *opcode = ie?ie->opcode:"011001";
-                fprintf(out, "# %s%s%s%s\n",
-                        opcode,
-                        reg_to_bin("r0"),
-                        reg_to_bin("r1"),
-                        "0000000000000000"); // simplified imm placeholder
-                fprintf(out, "    sb r1, %s(r0)\n", varname);
-                // SB comment
-                const InstEntry *sbi = find_inst("SB");
-                const char *sbop = sbi ? sbi->opcode : "101000";
-                fprintf(out, "# %s%s%s%s\n", sbop, reg_to_bin("r0"), reg_to_bin("r1"), "0000000000000000");
-            } else {
-                // assignment from expression (e.g., int a = b * c)
-                // parse RHS expression and evaluate to register
-                Token tok[MAXTOK], rpn[MAXTOK]; int nt=0, nr=0;
-                tokenize_expr(right, tok, &nt);
-                shunting_yard(tok, nt, rpn, &nr);
-                char resultreg[16];
-                eval_rpn_and_emit(rpn, nr, out, resultreg);
-                // store resultreg into memory label
-                fprintf(out, "    sb %s, %s(r0)\n", resultreg, varname);
-                const InstEntry *sbi = find_inst("SB");
-                const char *sbop = sbi ? sbi->opcode : "101000";
-                fprintf(out, "# %s%s%s%s\n", sbop, reg_to_bin("r0"), reg_to_bin(resultreg), "0000000000000000");
-            }
-            return;
-        }
-
-        // Otherwise left is a variable name assignment, e.g., "a = ..." or "a = a + b * c"
-        char varname[64]; strcpy(varname, left); trim(varname);
-
-        // Check if RHS is numeric constant:
-        int isnum = 1;
-        for (size_t i=0;i<strlen(right);++i) if (!isdigit((unsigned char)right[i]) && right[i] != '-') { isnum = 0; break; }
-
-        if (isnum) {
-            // immediate assignment
-            fprintf(out, "    daddi r1, r0, %s\n", right);
-            const InstEntry *ie = find_inst("DADDIU");
-            const char *opcode = ie?ie->opcode:"011001";
-            fprintf(out, "# %s%s%s%s\n",
-                    opcode, reg_to_bin("r0"), reg_to_bin("r1"), "0000000000000000");
-            fprintf(out, "    sb r1, %s(r0)\n", varname);
-            const InstEntry *sbi = find_inst("SB");
-            const char *sbop = sbi ? sbi->opcode : "101000";
-            fprintf(out, "# %s%s%s%s\n", sbop, reg_to_bin("r0"), reg_to_bin("r1"), "0000000000000000");
-            return;
         } else {
-            // RHS is expression: use shunting-yard + eval to emit code, then sb result to mem
-            Token tok[MAXTOK], rpn[MAXTOK]; int nt=0, nr=0;
-            tokenize_expr(right, tok, &nt);
-            shunting_yard(tok, nt, rpn, &nr);
-            char resultreg[16];
-            eval_rpn_and_emit(rpn, nr, out, resultreg);
-            // store resultreg to memory varname
-            fprintf(out, "    sb %s, %s(r0)\n", resultreg, varname);
-            const InstEntry *sbi = find_inst("SB");
-            const char *sbop = sbi ? sbi->opcode : "101000";
-            fprintf(out, "# %s%s%s%s\n", sbop, reg_to_bin("r0"), reg_to_bin(resultreg), "0000000000000000");
-            return;
+            break;
         }
     }
-
-    // If no '=', we just ignore or comment
-    fprintf(out, "    # unsupported or empty line: %s\n", s);
-}
-
-/* ---------------- main ------------------ */
-int main(int argc, char **argv) {
-    const char *infile = "input.txt";
-    const char *outfile = "output.s";
-    if (argc >= 2) infile = argv[1];
-    if (argc >= 3) outfile = argv[2];
-
-    FILE *fin = fopen(infile, "r");
-    if (!fin) { printf("Cannot open input file %s\n", infile); return 1; }
-    FILE *fout = fopen(outfile, "w");
-    if (!fout) { printf("Cannot open output file %s\n", outfile); fclose(fin); return 1; }
-
-    fprintf(fout, ".code\n");
-
-    char line[512];
-    while (fgets(line, sizeof(line), fin)) {
-        char tmp[512]; strcpy(tmp, line);
-        // trim leading/trailing
-        trim(tmp);
-        if (strlen(tmp) == 0) continue;
-        // remove trailing semicolon only for processing (we keep memory labels)
-        translate_line(tmp, fout);
-    }
-
-    fclose(fin);
-    fclose(fout);
-    printf("Translation complete: wrote %s\n", outfile);
-    return 0;
 }
